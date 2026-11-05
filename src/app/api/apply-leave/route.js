@@ -51,6 +51,9 @@ function calculateLeaveDays(fromDate, toDate, isHalfDay) {
   return Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
 }
 
+// isDateBeforeToday is no longer used – removed the check entirely.
+// If you want to keep the function for other purposes, you can leave it,
+// but it is not called anywhere now.
 function isDateBeforeToday(dateValue) {
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return false;
@@ -124,7 +127,7 @@ async function saveUploadedFiles(files) {
   return savedFiles;
 }
 
-//====================POST Handler (updated with skipApproval)====================
+//====================POST Handler (past-date check removed)====================
 export async function POST(req) {
   try {
     const userId = getUserIdFromAuth(req);
@@ -142,9 +145,10 @@ export async function POST(req) {
       return NextResponse.json({ error: "Leave type, dates, and no. of days are required" }, { status: 400 });
     }
 
-    if (isDateBeforeToday(fromDate) || isDateBeforeToday(toDate)) {
-      return NextResponse.json({ error: "Past dates are not allowed" }, { status: 400 });
-    }
+    // ✅ Backdating is now allowed – the following check has been removed:
+    // if (isDateBeforeToday(fromDate) || isDateBeforeToday(toDate)) {
+    //   return NextResponse.json({ error: "Past dates are not allowed" }, { status: 400 });
+    // }
 
     const parsedDays = Number(daysRaw);
     const calculatedDays = calculateLeaveDays(fromDate, toDate, !!isHalfDay);
@@ -162,7 +166,7 @@ export async function POST(req) {
     const applicantUser = await db.collection("users").findOne({ _id: userObjectId });
     if (!applicantUser) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    // Overlap check
+    // Overlap check – works with past dates too
     const overlapping = await db.collection("leave_applications").findOne({
       userId: userObjectId,
       status: { $in: ["pending", "approved"] },

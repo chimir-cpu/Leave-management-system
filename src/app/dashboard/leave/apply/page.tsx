@@ -65,7 +65,7 @@ function calculateLeaveDays(startDateStr: string, endDateStr: string, holidays: 
 
 export default function ApplyLeavePage() {
   const router = useRouter();
-  const minSelectableDate = getTodayLocalDateString();
+  const minSelectableDate = getTodayLocalDateString(); // kept but not used for restriction
 
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [leaveTypeId, setLeaveTypeId] = useState("");
@@ -77,7 +77,7 @@ export default function ApplyLeavePage() {
 
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [leaveEntries, setLeaveEntries] = useState<LeaveEntry[]>([]);
-  const [holidays, setHolidays] = useState<Holiday[]>([]); // NEW
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -153,7 +153,7 @@ export default function ApplyLeavePage() {
     return Number(selected?.balance || 0);
   }, [leaveEntries, leaveTypeId]);
 
-  // ✅ NEW: Calculate days automatically (excludes weekends & holidays)
+  // Calculate days automatically (excludes weekends & holidays)
   useEffect(() => {
     if (isHalfDay) {
       setDays("0.5");
@@ -209,10 +209,7 @@ export default function ApplyLeavePage() {
       return;
     }
 
-    if (fromDate < minSelectableDate || toDate < minSelectableDate) {
-      setMessage("Past dates are not allowed. Please select today or future dates");
-      return;
-    }
+    // Backdating is now allowed – removed the past‑date check
 
     if (parsedDays > selectedBalance) {
       setMessage("No. of days cannot exceed assigned leave balance");
@@ -327,7 +324,7 @@ export default function ApplyLeavePage() {
                     type="date"
                     value={fromDate}
                     onChange={(e) => setFromDate(e.target.value)}
-                    min={minSelectableDate}
+                    // removed min attribute to allow past dates
                     required
                     mt="1"
                   />
@@ -341,7 +338,7 @@ export default function ApplyLeavePage() {
                     type="date"
                     value={toDate}
                     onChange={(e) => setToDate(e.target.value)}
-                    min={fromDate || minSelectableDate}
+                    // removed min attribute to allow past dates
                     required
                     mt="1"
                   />
@@ -357,7 +354,7 @@ export default function ApplyLeavePage() {
                     min={isHalfDay ? "0.5" : "1"}
                     max={selectedBalance || undefined}
                     value={days}
-                    readOnly   // ✅ Make it read-only to prevent manual mismatch
+                    readOnly
                     required
                     mt="1"
                   />

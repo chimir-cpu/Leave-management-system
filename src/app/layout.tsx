@@ -4,8 +4,11 @@ import "@radix-ui/themes/styles.css";
 import { Theme } from "@radix-ui/themes";
 
 export const metadata: Metadata = {
-  title: "Anti-Corruption Commission",
-  description: "Anti-Corruption Commission",
+  title: "Royal Audit Authority",
+  description: "Royal Audit Authority",
+  icons: {
+    icon: "/raa-insights.png", // Points to public/raa-insights.png
+  },
 };
 
 export default function RootLayout({

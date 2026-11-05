@@ -352,9 +352,9 @@ export default function Sidebar() {
   </button>
 </div>
 
-      <div className="px-4 py-4">
-        © {new Date().getFullYear()} ANTI-CORRUPTION COMMISSION
-      </div>
+     <div className="px-4 py-4 text-center">
+  © {new Date().getFullYear()} ROYAL AUDIT AUTHORITY
+</div>
     </aside>
   );
 }

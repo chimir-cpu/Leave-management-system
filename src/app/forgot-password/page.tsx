@@ -111,16 +111,10 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#00083d]">
-      <div className="bg-white shadow-2xl border border-gray-200 rounded-3xl p-10 w-full max-w-md">
-        {/* Logo */}
-        <div className="flex justify-center items-center mb-6">
-          <img
-            src="/civicleave-logo.svg"
-            alt="CivicLeave"
-            className="h-16 w-auto"
-          />
-        </div>
+<div className="min-h-screen flex items-center justify-center bg-[#00083d]">
+  <div className="bg-white shadow-2xl border border-gray-200 rounded-3xl p-10 w-full max-w-md">
+
+    {/* Header */}
 
         {/* Header */}
         <div className="text-center mb-6">

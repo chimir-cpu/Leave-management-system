@@ -51,20 +51,21 @@ function LoginForm() {
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
   {/* Logo Section - no vertical padding */}
   <div className="flex justify-center pt-4 pb-0">
-  <Image
-    src="/acc-insights.png"
-    alt="ACC Insights"
-    width={280}      // smaller width
-    height={120}     // maintains 640:427 aspect ratio
-    className="block mt-4 mb-4"
-    priority
-  />
-</div>
+  
+            <Image
+              src="/raa-insights.png"
+              alt="raa insights"
+              width={280}
+              height={120}
+              className="block mt-4 mb-4"
+              priority
+            />
+          </div>
 
   {/* Title - no top margin */}
   <div className="text-center px-6">
     <h4 className="text-[25px] font-semibold text-gray-900 mt-0">
-  Anti-Corruption Commission
+  Royal Audit Authority
 </h4>
     <p className="text-gray-500 text-sm mt-1">
       Sign in to your account
@@ -145,7 +146,7 @@ function LoginForm() {
             </p>
 
             <p className="text-xs text-gray-400 pt-2">
-              © {new Date().getFullYear()} Anti-Corruption Commission
+              © {new Date().getFullYear()} Royal Audit Authority
             </p>
           </div>
         </div>

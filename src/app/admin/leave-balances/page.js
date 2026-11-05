@@ -1,10 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Trash2, Pencil, Save, Check, X, Plus } from "lucide-react";
+import { Trash2, Pencil, Save, Check, X, Plus, Download } from "lucide-react";
 import Sidebar from "@/components/Sidebar";
 
-export default function LeaveBalancesPage() {
+// Helper: max total balance for each leave type (display only)
+const getMaxBalance = (leaveTypeName) => {
+  const name = leaveTypeName?.toLowerCase() || "";
+  if (name.includes("annual")) return 51;
+  return Infinity;
+};
+
+export default function LeaveBalancesPageContent() {
   const [data, setData] = useState([]);
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -41,9 +48,76 @@ export default function LeaveBalancesPage() {
   };
 
   const hasBulkAllocationOccurred = () => {
-    return data.some(user =>
-      user.leaves?.some(leave => (leave.allocated || 0) > 0)
+    return data.some((user) =>
+      user.leaves?.some((leave) => (leave.allocated || 0) > 0)
     );
+  };
+
+  // ================= EXPORT TO CSV =================
+  const exportToCSV = () => {
+    if (!data || data.length === 0) {
+      showNotification("No data to export", "error");
+      return;
+    }
+
+    // Build header row – added Department and Division
+    const headers = ["#", "User", "Department", "Division"];
+    leaveTypes.forEach((lt) => {
+      headers.push(`${lt.name} Alloc`);
+      headers.push(`${lt.name} Used`);
+      headers.push(`${lt.name} Bal`);
+    });
+    headers.push("Remarks");
+
+    // Build rows
+    const rows = data.map((row, idx) => {
+      const rowData = [
+        (idx + 1).toString(),
+        row.userName || "",
+        row.department || "",
+        row.division || "",
+      ];
+      leaveTypes.forEach((lt) => {
+        const leave = row.leaves?.find(
+          (l) => l.leaveTypeId.toString() === lt._id.toString()
+        );
+        rowData.push(leave?.allocated ?? 0);
+        rowData.push(leave?.used ?? 0);
+        rowData.push(leave?.balance ?? 0);
+      });
+      rowData.push(row.remarks || "");
+      return rowData;
+    });
+
+    // Escape fields that contain commas, quotes, or newlines
+    const escapeCSV = (field) => {
+      if (field === null || field === undefined) return "";
+      const str = String(field);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Build CSV string
+    const csvRows = [
+      headers.map(escapeCSV).join(","),
+      ...rows.map((row) => row.map(escapeCSV).join(",")),
+    ];
+    const csvContent = csvRows.join("\n");
+
+    // Download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.setAttribute("download", `leave_balances_${selectedYear}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    showNotification(`Exported ${data.length} records for ${selectedYear}`);
   };
 
   // ================= ADD =================
@@ -57,7 +131,7 @@ export default function LeaveBalancesPage() {
     }
 
     try {
-      await fetch("/api/leave-balances", {
+      const res = await fetch("/api/leave-balances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -66,12 +140,18 @@ export default function LeaveBalancesPage() {
         }),
       });
 
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Allocation failed");
+      }
+
+      const responseData = await res.json();
       fetchData(selectedYear);
       setShowForm(false);
       setFormData({});
-      showNotification(`Leave allocated successfully for ${selectedYear}`);
+      showNotification(responseData.message || `Leave allocated successfully for ${selectedYear}`);
     } catch (err) {
-      showNotification("Allocation failed", "error");
+      showNotification(err.message, "error");
     }
   };
 
@@ -81,7 +161,6 @@ export default function LeaveBalancesPage() {
     row.leaves.forEach((l) => {
       allocationMap[l.leaveTypeId] = l.allocated;
     });
-
     setFormData(allocationMap);
     setRemarks(row.remarks || "");
     setEditData(row);
@@ -95,7 +174,6 @@ export default function LeaveBalancesPage() {
         const existing = editData.leaves.find(
           (l) => l.leaveTypeId.toString() === lt._id.toString()
         );
-
         return {
           leaveTypeId: lt._id,
           leaveTypeName: lt.name,
@@ -104,7 +182,7 @@ export default function LeaveBalancesPage() {
         };
       });
 
-      await fetch("/api/leave-balances", {
+      const res = await fetch("/api/leave-balances", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -114,41 +192,48 @@ export default function LeaveBalancesPage() {
         }),
       });
 
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Update failed");
+      }
+
+      const responseData = await res.json();
       fetchData(selectedYear);
       setShowForm(false);
       setEditData(null);
-      showNotification("Updated successfully");
-    } catch {
-      showNotification("Update failed", "error");
+      showNotification(responseData.message || "Updated successfully");
+    } catch (err) {
+      showNotification(err.message, "error");
     }
   };
 
   // ================= DELETE =================
   const handleDelete = async (row) => {
     if (!confirm(`Delete leave record for ${row.userName}?`)) return;
-
     await fetch("/api/leave-balances", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ _id: row._id }),
     });
-
     fetchData(selectedYear);
     showNotification("Deleted successfully");
   };
 
   // ================= FILTER + SORT =================
-  const filtered = data.filter((row) =>
-    row.userName?.toLowerCase().includes(search.toLowerCase())
-  );
-
+  // Search also matches department/division
+  const filtered = data.filter((row) => {
+    const searchLower = search.toLowerCase();
+    return (
+      row.userName?.toLowerCase().includes(searchLower) ||
+      row.department?.toLowerCase().includes(searchLower) ||
+      row.division?.toLowerCase().includes(searchLower)
+    );
+  });
   const sorted = [...filtered];
   if (sortConfig.key) {
     sorted.sort((a, b) => {
-      if (a[sortConfig.key] < b[sortConfig.key])
-        return sortConfig.direction === "asc" ? -1 : 1;
-      if (a[sortConfig.key] > b[sortConfig.key])
-        return sortConfig.direction === "asc" ? 1 : -1;
+      if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === "asc" ? -1 : 1;
+      if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === "asc" ? 1 : -1;
       return 0;
     });
   }
@@ -194,7 +279,7 @@ export default function LeaveBalancesPage() {
           </div>
         )}
 
-        {/* Sticky Header with title fixed */}
+        {/* Sticky Header */}
         <div className="sticky top-0 z-20 bg-gray-100 pt-2 pb-3 -mt-2 mb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
@@ -207,31 +292,42 @@ export default function LeaveBalancesPage() {
                   className="border rounded px-1 py-0.5 text-xs bg-white"
                 >
                   {[2024, 2025, 2026, 2027, 2028].map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
+                    <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
               </div>
             </div>
             {!showForm && (
-              <button
-                onClick={() => {
-                  setShowForm(true);
-                  setEditData(null);
-                  setFormData({});
-                  setRemarks("");
-                }}
-                disabled={isBulkAllocationDisabled}
-                className={`flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs font-medium whitespace-nowrap shadow-sm ${
-                  isBulkAllocationDisabled
-                    ? "opacity-50 cursor-not-allowed"
-                    : "hover:border-black"
-                }`}
-                title={isBulkAllocationDisabled ? `Bulk allocation already done for ${selectedYear}` : ""}
-              >
-                <Plus size={12} /> Allocate {selectedYear}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs font-medium hover:border-black shadow-sm"
+                  title="Download CSV backup"
+                >
+                  <Download size={12} /> Export CSV
+                </button>
+                <button
+                  onClick={() => {
+                    setShowForm(true);
+                    setEditData(null);
+                    setFormData({});
+                    setRemarks("");
+                  }}
+                  disabled={isBulkAllocationDisabled}
+                  className={`flex items-center gap-1 px-2 py-1 bg-white border rounded text-xs font-medium whitespace-nowrap shadow-sm ${
+                    isBulkAllocationDisabled
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:border-black"
+                  }`}
+                  title={
+                    isBulkAllocationDisabled
+                      ? `Bulk allocation already done for ${selectedYear}`
+                      : ""
+                  }
+                >
+                  <Plus size={12} /> Allocate {selectedYear}
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -258,19 +354,31 @@ export default function LeaveBalancesPage() {
               </div>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {leaveTypes.map((lt) => (
-                <div key={lt._id}>
-                  <label className="text-xs font-medium">{lt.name}</label>
-                  <input
-                    type="number"
-                    value={formData[lt._id] || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, [lt._id]: Number(e.target.value) })
-                    }
-                    className="w-full border rounded px-2 py-1 text-xs mt-1"
-                  />
-                </div>
-              ))}
+              {leaveTypes.map((lt) => {
+                const max = getMaxBalance(lt.name);
+                return (
+                  <div key={lt._id}>
+                    <label className="text-xs font-medium">{lt.name}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={formData[lt._id] ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? "" : Number(e.target.value);
+                        if (val !== "" && (isNaN(val) || val < 0)) return;
+                        setFormData({ ...formData, [lt._id]: val });
+                      }}
+                      className="w-full border rounded px-2 py-1 text-xs mt-1"
+                      placeholder="Enter days"
+                    />
+                    {max !== Infinity && (
+                      <span className="text-[10px] text-gray-500 block mt-0.5">
+                        Max total balance: {max} days
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-3">
               <label className="text-xs font-medium">Remarks</label>
@@ -303,28 +411,30 @@ export default function LeaveBalancesPage() {
         <div className="mb-3">
           <input
             type="text"
-            placeholder="Search user..."
+            placeholder="Search user, department, division..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full sm:w-64 px-3 py-1.5 border rounded text-sm"
           />
         </div>
 
-        {/* Responsive Table - horizontal scroll on small screens */}
+        {/* Table */}
         <div className="bg-white shadow rounded-lg border overflow-x-auto">
-          <table className="min-w-[900px] w-full text-xs">
+          <table className="min-w-[1100px] w-full text-xs">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-2 py-1.5 text-left sticky left-0 bg-gray-50 z-10" rowSpan={2}>#</th>
                 <th className="px-2 py-1.5 text-left sticky left-8 bg-gray-50 z-10" rowSpan={2}>User</th>
-                {leaveTypes.map(lt => (
+                <th className="px-2 py-1.5 text-left" rowSpan={2}>Department</th>
+                <th className="px-2 py-1.5 text-left" rowSpan={2}>Division</th>
+                {leaveTypes.map((lt) => (
                   <th key={lt._id} className="px-1 py-1 text-center" colSpan={3}>{lt.name}</th>
                 ))}
                 <th className="px-2 py-1.5 text-left" rowSpan={2}>Remarks</th>
                 <th className="px-2 py-1.5 text-left sticky right-0 bg-gray-50 z-10" rowSpan={2}>Actions</th>
               </tr>
               <tr>
-                {leaveTypes.map(lt => (
+                {leaveTypes.map((lt) => (
                   <React.Fragment key={lt._id}>
                     <th className="px-1 py-0.5 text-center border font-medium">Alloc</th>
                     <th className="px-1 py-0.5 text-center border font-medium">Used</th>
@@ -338,11 +448,15 @@ export default function LeaveBalancesPage() {
                 <tr key={row._id} className="hover:bg-gray-50">
                   <td className="px-2 py-1.5 sticky left-0 bg-white">{startIndex + idx + 1}</td>
                   <td className="px-2 py-1.5 sticky left-8 bg-white font-medium">{row.userName}</td>
-                  {leaveTypes.map(lt => {
-                    const leave = row.leaves?.find(l => l.leaveTypeId.toString() === lt._id.toString());
+                  <td className="px-2 py-1.5">{row.department || '-'}</td>
+                  <td className="px-2 py-1.5">{row.division || '-'}</td>
+                  {leaveTypes.map((lt) => {
+                    const leave = row.leaves?.find(
+                      (l) => l.leaveTypeId.toString() === lt._id.toString()
+                    );
                     const alloc = leave?.allocated || 0;
                     const used = leave?.used || 0;
-                    const bal = alloc - used;
+                    const bal = leave?.balance || 0;
                     return (
                       <React.Fragment key={lt._id}>
                         <td className="px-1 py-1.5 text-center border">{alloc}</td>
@@ -366,7 +480,7 @@ export default function LeaveBalancesPage() {
               ))}
               {paginated.length === 0 && (
                 <tr>
-                  <td colSpan={leaveTypes.length * 3 + 4} className="text-center py-4 text-gray-500">
+                  <td colSpan={leaveTypes.length * 3 + 6} className="text-center py-4 text-gray-500">
                     No data found
                   </td>
                 </tr>
@@ -381,16 +495,33 @@ export default function LeaveBalancesPage() {
             <span>Rows:</span>
             <select
               value={rowsPerPage}
-              onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
+              onChange={(e) => {
+                setRowsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
               className="border rounded px-1 py-0.5 text-xs"
             >
-              {[5, 10, 20, 50].map(s => <option key={s}>{s}</option>)}
+              {[5, 10, 20, 50].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
             </select>
           </div>
           <div className="flex items-center gap-1 flex-wrap">
-            <button onClick={() => setCurrentPage(p => Math.max(p-1,1))} disabled={currentPage===1} className="px-2 py-0.5 border rounded text-xs">Prev</button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-2 py-0.5 border rounded text-xs"
+            >
+              Prev
+            </button>
             {renderPageNumbers()}
-            <button onClick={() => setCurrentPage(p => Math.min(p+1,totalPages))} disabled={currentPage===totalPages || totalPages===0} className="px-2 py-0.5 border rounded text-xs">Next</button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="px-2 py-0.5 border rounded text-xs"
+            >
+              Next
+            </button>
           </div>
         </div>
       </main>
